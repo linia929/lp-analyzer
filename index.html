@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>全能运筹优化分析台 (极值吸附版)</title>
+    <style>
+        :root { --primary: #2980b9; --bg: #ecf0f1; --panel-bg: #ffffff; }
+        body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); overflow: hidden; }
+        
+        .sidebar { width: 480px; min-width: 350px; background: var(--panel-bg); display: flex; flex-direction: column; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 10; padding: 20px; box-sizing: border-box; }
+        .resizer { width: 6px; background: #bdc3c7; cursor: ew-resize; z-index: 20; transition: background 0.2s; }
+        .resizer:hover, .resizer.active { background: #3498db; }
+        .main { flex: 1; min-width: 400px; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; position: relative; }
+        
+        h3 { border-left: 4px solid var(--primary); padding-left: 8px; margin-top: 0; color: #2c3e50; font-size: 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px; margin-bottom: 15px; }
+        
+        textarea { width: 100%; height: 50px; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: monospace; resize: vertical; box-sizing: border-box; font-size: 12px; }
+        .btn-parse { background: #8e44ad; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; font-weight: bold; font-size: 13px; transition: 0.2s; }
+        .btn-parse:hover { background: #9b59b6; }
+        
+        .input-row { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; padding: 4px; border-radius: 4px; transition: 0.2s; }
+        .input-row:hover { background: #e8f4f8; }
+        input[type="number"] { padding: 4px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: monospace; }
+        select { padding: 4px; border-radius: 4px; border: 1px solid #ccc; }
+        .btn-danger { background: #e74c3c; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: auto; }
+        
+        .color-dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; box-shadow: inset 0 0 2px rgba(0,0,0,0.3); }
+        .canvas-container { position: relative; margin-bottom: 20px; flex-shrink: 0; flex: 1; display: flex; flex-direction: column; }
+        canvas { background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); width: 100%; flex: 1; min-height: 400px; object-fit: contain; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        
+        .status { padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 14px; transition: 0.3s; flex: 1; margin-bottom: 0; }
+        .status-ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .status-err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        .type-badge { padding: 10px 20px; border-radius: 6px; font-weight: bold; font-size: 15px; color: white; background: #95a5a6; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); white-space: nowrap; transition: 0.3s; }
+        
+        .toggle-container { display: flex; align-items: center; cursor: pointer; font-size: 13px; font-weight: bold; color: #e67e22; background: #fff3e0; padding: 4px 8px; border-radius: 4px; border: 1px solid #f39c12; }
+        
+        .sensitivity-panel { background: #fdfefe; border: 2px solid #3498db; padding: 12px; border-radius: 6px; margin-top: 10px; box-shadow: 0 2px 8px rgba(52,152,219,0.15); }
+        .variable-bounds { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+        .bound-item { display: flex; justify-content: space-between; align-items: center; background: #f1f2f6; padding: 5px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #dcdde1; }
+        
+        .reference-box { background: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; border-radius: 0 8px 8px 0; color: #34495e; line-height: 1.6; margin-top: 15px; }
+
+        .analysis-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-radius: 6px; overflow: hidden; }
+        .analysis-table th, .analysis-table td { border: 1px solid #ecf0f1; padding: 8px 12px; text-align: center; }
+        .analysis-table th { background-color: #34495e; color: white; font-weight: bold; }
+        .analysis-table tr:hover { background-color: #f1f2f6; }
+        .optimal-row { background-color: #e8f8f5; border-left: 4px solid #2ecc71; font-weight: bold; }
+        
+        .snap-btn { width: 100%; margin-top: 10px; padding: 8px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; display: none; background: #e67e22; color: white; box-shadow: 0 2px 4px rgba(230,126,34,0.3); }
+        .snap-btn:hover { background: #d35400; }
+        .snap-btn.active { display: block; animation: pulse 1.5s infinite; }
+        
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+<div class="sidebar" id="sidebar">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: #2c3e50; color: white; padding: 10px 15px; border-radius: 6px;">
+        <span style="font-weight: bold; font-size: 15px;">🌌 系统维度设置：</span>
+        <div>变量数 (N): <input type="number" id="var-count" value="2" min="1" max="10" onchange="rebuildUI()" style="width: 50px; font-weight: bold;"></div>
+    </div>
+
+    <h3>🤖 智能文本识别器 (全局扫除法)</h3>
+    <div class="card">
+        <textarea id="smart-input" placeholder="将 OCR 识别的文本直接粘贴在此处，无视乱码..."></textarea>
+        <button class="btn-parse" onclick="parseText()">✨ 提取公式并自动求解最值</button>
+    </div>
+
+    <h3>
+        <span>⚙️ 核心参数矩阵</span>
+        <label class="toggle-container" id="ip-toggle-wrapper"><input type="checkbox" id="ip-toggle" onchange="solveAndDraw()"> 整数规划</label>
+    </h3>
+    <div class="card" id="form-container">
+        <div style="font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;" id="obj-container"></div>
+        
+        <div class="sensitivity-panel" id="sensitivity-wrapper">
+            <label style="font-weight: bold; color: #2980b9; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                <input type="checkbox" id="c-mode-toggle" onchange="toggleCMode()" style="transform: scale(1.2);"> 
+                🎯 开启 C 灵敏度扫描 (锚点旋转)
+            </label>
+            <div id="c-mode-controls" style="display: none; margin-top: 12px;">
+                <select id="c-mode-target" onchange="slideC()" style="width:100%; padding:4px;">
+                    <option value="1">变动 c₁ (Z = C·x₁ + c₂·x₂)</option>
+                    <option value="2">变动 c₂ (Z = c₁·x₁ + C·x₂)</option>
+                </select>
+                <div style="background: #f1f2f6; padding: 8px; border-radius: 4px; margin: 10px 0;">
+                    <strong style="font-size: 13px; color: #2c3e50;">🔒 旋转锚点锁定：</strong>
+                    <select id="pivot-mode" onchange="handlePivotChange()" style="margin-top: 5px; width: 100%; padding:4px;">
+                        <option value="vertex" selected>⭐ 绕当前最优顶点旋转</option>
+                        <option value="y-axis">📌 绕 Y 轴交点旋转</option>
+                        <option value="auto">🌀 无固定点 (自动追随新最高点)</option>
+                    </select>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span>区间: [-10, 10]</span>
+                    <span><strong style="color: #e74c3c;">C = <span id="c-val-text">2.00</span></strong></span>
+                </div>
+                <input type="range" id="c-slider" min="-10" max="10" step="0.1" value="2" oninput="slideC()" style="width:100%;">
+                
+                <button id="snap-optimal-btn" class="snap-btn" onclick="snapToOptimal()">⚡ 原锚点失效，点击一键吸附至新最优解！</button>
+            </div>
+        </div>
+
+        <hr style="margin: 15px 0 10px 0; border: 0; border-top: 1px solid #ccc;">
+        
+        <div id="constraints-list"></div>
+        <button style="width: 100%; margin-top: 8px; padding: 6px; cursor: pointer; border-radius: 4px; border: 1px dashed #7f8c8d; background: #fff;" onclick="addConstraint()">+ 手动添加约束</button>
+
+        <div class="variable-bounds" id="bounds-list"></div>
+    </div>
+
+    <h3 style="margin-top: 5px;">📄 智能代数标准化引擎</h3>
+    <div class="card" id="standard-form" style="font-family: 'Courier New', monospace; white-space: pre-wrap; font-size: 13px; color: #2c3e50; background: #f0f4f8; border-left: 4px solid #8e44ad; margin-bottom: 5px;">引擎运算中...</div>
+
+    <div class="reference-box">
+        <h4 style="margin: 0 0 10px 0; color: #2c3e50; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+            📚 线性规划标准化流程备忘录
+        </h4>
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+            <li><strong>目标函数：</strong> 统一为求极大值。若 min Z，则令 Z' = -Z，转化 max Z'。</li>
+            <li><strong>约束符号：</strong> 统一为等式 (=)。<br>
+                <span style="color: #7f8c8d;">- 若为 &le;，左侧加<strong>松弛变量</strong> (+x<sub>s</sub>)；</span><br>
+                <span style="color: #7f8c8d;">- 若为 &ge;，左侧减<strong>剩余变量</strong> (-x<sub>s</sub>)。</span>
+            </li>
+            <li><strong>右端常数：</strong> 必须非负 (b<sub>i</sub> &ge; 0)。若为负，等式同乘 -1 翻转不等号。</li>
+            <li><strong>变量约束：</strong> 若变量无约束，令 x<sub>i</sub> = x<sub>i</sub>' - x<sub>i</sub>''，其中均 &ge; 0。</li>
+        </ul>
+    </div>
+</div>
+
+<div class="resizer" id="resizer"></div>
+
+<div class="main">
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+        <div class="status status-ok" id="status-panel">✅ 分析系统准备就绪</div>
+        <div class="type-badge" id="solution-type-badge">判定结论：待分析</div>
+    </div>
+    
+    <div class="canvas-container" id="canvas-wrapper">
+        <canvas id="canvas" width="800" height="420"></canvas>
+        <div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.95); padding: 12px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none; border: 1px solid #ecf0f1;">
+            💡 <strong>智能寻优雷达：</strong><br>更改参数自动锁定全局最优解。<br>
+            <div style="margin-top: 5px; font-size: 15px;">当前 <span style="color: #e74c3c; font-weight: bold;">Z = <span id="z-val-display">0.00</span></span></div>
+        </div>
+    </div>
+
+    <h3 id="table-title" style="margin-top: 5px; display: none;">🎯 顶点灵敏度分析雷达 (逆向推导参数区间)</h3>
+    <table class="analysis-table" id="analysis-table" style="display: none;">
+        <thead>
+            <tr>
+                <th>可行域顶点 (x₁, x₂)</th>
+                <th>当前 Z 值</th>
+                <th>使该点成为最优解的 c₁ 区间 <br><span style="font-weight:normal; font-size:11px;">(假设 c₂ 不变)</span></th>
+                <th>使该点成为最优解的 c₂ 区间 <br><span style="font-weight:normal; font-size:11px;">(假设 c₁ 不变)</span></th>
+            </tr>
+        </thead>
+        <tbody id="analysis-tbody"></tbody>
+    </table>
+</div>
+
+<script>
+    let N = 2; 
+    
+    function rebuildUI() {
+        N = parseInt(document.getElementById('var-count').value) || 2;
+        if(N < 1) { N = 1; document.getElementById('var-count').value = 1; }
+        if(N > 10) { N = 10; document.getElementById('var-count').value = 10; }
+
+        let objHtml = `目标：<select id="obj-type" onchange="solveAndDraw()"><option value="max">Max</option><option value="min">Min</option></select> Z = `;
+        for(let i=1; i<=N; i++) {
+            let defVal = i===1 ? 2 : (i===2 ? 3 : 1);
+            objHtml += `<input type="number" id="c${i}" value="${defVal}" oninput="solveAndDraw()" style="width:45px;"> x<sub>${i}</sub> `;
+            if(i < N) objHtml += `<span style="color:#7f8c8d; font-weight:bold;">+</span> `;
+        }
+        document.getElementById('obj-container').innerHTML = objHtml;
+        document.getElementById('sensitivity-wrapper').style.display = (N === 2) ? 'block' : 'none';
+        document.getElementById('ip-toggle-wrapper').style.display = (N === 2) ? 'flex' : 'none';
+        document.getElementById('constraints-list').innerHTML = '';
+        if(N === 2) {
+            addConstraint([1, 1, '<=', 8]); addConstraint([2, 1, '<=', 12]); addConstraint([0, 1, '<=', 6]);
+        } else {
+            addConstraint(); addConstraint();
+        }
+        let boundsHtml = '';
+        for(let i=1; i<=N; i++) boundsHtml += `<div class="bound-item"><span>x<sub>${i}</sub></span><select class="var-bound" id="bound-x${i}" onchange="solveAndDraw()"><option value=">=0">&ge;0</option><option value="<=0">&le;0</option><option value="free">无界</option></select></div>`;
+        document.getElementById('bounds-list').innerHTML = boundsHtml;
+        solveAndDraw();
+    }
+
+    function addConstraint(defaultVals = null) {
+        let html = `<div class="input-row constraint">`;
+        for(let i=1; i<=N; i++) {
+            let val = defaultVals ? (defaultVals[i-1]!==undefined ? defaultVals[i-1] : 0) : (i===1?1:(i===2?1:0));
+            html += `<input type="number" class="a-coeff" value="${val}" oninput="solveAndDraw()" style="width:45px;">x<sub>${i}</sub> `;
+            if(i < N) html += `+ `;
+        }
+        let sign = defaultVals ? defaultVals[N] : '<=';
+        let b = defaultVals ? defaultVals[N+1] : 5;
+        html += `<select class="sign" onchange="solveAndDraw()">
+                    <option value="<=" ${sign==='<='?'selected':''}>&le;</option>
+                    <option value="=" ${sign==='='?'selected':''}>=</option>
+                    <option value=">=" ${sign==='>='?'selected':''}>&ge;</option>
+                 </select> 
+                 <input type="number" class="b" value="${b}" oninput="solveAndDraw()" style="width:45px;"> 
+                 <button class="btn-danger" onclick="this.parentElement.remove(); solveAndDraw();">删</button></div>`;
+        document.getElementById('constraints-list').insertAdjacentHTML('beforeend', html);
+    }
+
+    const sidebar = document.getElementById('sidebar');
+    const resizer = document.getElementById('resizer');
+    let isResizing = false;
+    resizer.addEventListener('mousedown', () => { isResizing = true; resizer.classList.add('active'); document.body.style.cursor = 'ew-resize'; });
+    document.addEventListener('mousemove', (e) => { if (isResizing) sidebar.style.width = Math.max(300, Math.min(e.clientX, 800)) + 'px'; });
+    document.addEventListener('mouseup', () => { if (isResizing) { isResizing = false; resizer.classList.remove('active'); document.body.style.cursor = 'default'; }});
+
+    function parseText() {
+        if(N !== 2) { document.getElementById('var-count').value = 2; rebuildUI(); }
+        let text = document.getElementById('smart-input').value.toLowerCase();
+        text = text.replace(/≥/g, '>=').replace(/≤/g, '<=').replace(/＞＝/g, '>=').replace(/＜＝/g, '<=');
+        
+        const objMatch = text.match(/(max|min)\s*z\s*=\s*([+-]?c?\d*\.?\d*)x1\s*([+-]?\s*c?\d*\.?\d*)x2/);
+        if (objMatch) {
+            document.getElementById('obj-type').value = objMatch[1];
+            const parseCoeff = (str) => { let s = str.replace(/[c\s+]/g, ''); return s==='' ? 1 : (s==='-' ? -1 : parseFloat(s)); };
+            document.getElementById('c1').value = parseCoeff(objMatch[2]);
+            document.getElementById('c2').value = parseCoeff(objMatch[3]);
+        }
+        
+        let remainingText = text;
+        if(objMatch) remainingText = remainingText.replace(objMatch[0], '');
+        remainingText = remainingText.replace(/x1\s*,\s*x2\s*>=\s*0/g, '').replace(/x1\s*>=\s*0/g, '').replace(/x2\s*>=\s*0/g, '');
+
+        let newConstraints = [];
+        const cRegex = /(?:([+-]?\d*\.?\d*)x1)?\s*(?:([+-]?\s*\d*\.?\d*)x2)?\s*(<=|>=|=)\s*([+-]?\d*\.?\d*)/g;
+        let match;
+        while ((match = cRegex.exec(remainingText)) !== null) {
+            if (!match[1] && !match[2]) continue; 
+            let a1Str = match[1] ? match[1].replace(/\s+/g, '') : '0';
+            let a2Str = match[2] ? match[2].replace(/\s+/g, '') : '0';
+            let a1 = (a1Str === '' || a1Str === '+') ? 1 : (a1Str === '-' ? -1 : parseFloat(a1Str));
+            let a2 = (a2Str === '' || a2Str === '+') ? 1 : (a2Str === '-' ? -1 : parseFloat(a2Str));
+            newConstraints.push([a1, a2, match[3], parseFloat(match[4])]);
+        }
+        
+        if(newConstraints.length > 0) {
+            document.getElementById('constraints-list').innerHTML = '';
+            newConstraints.forEach(c => addConstraint(c));
+        }
+        solveAndDraw();
+    }
+
+    const LINE_COLORS = ['#3498db', '#9b59b6', '#f1c40f', '#e67e22', '#1abc9c', '#34495e'];
+    let hoveredLineIdx = -1;
+    function bindInteractions() {
+        const rows = document.querySelectorAll('.constraint');
+        rows.forEach((row, idx) => {
+            let dot = row.querySelector('.color-dot');
+            if (N === 2) {
+                const color = LINE_COLORS[idx % LINE_COLORS.length];
+                if(!dot) { dot = document.createElement('span'); dot.className = 'color-dot'; row.insertBefore(dot, row.firstChild); }
+                dot.style.backgroundColor = color; dot.style.display = 'inline-block';
+                row.onmouseenter = () => { hoveredLineIdx = idx; requestAnimationFrame(() => drawFullCanvas()); };
+                row.onmouseleave = () => { hoveredLineIdx = -1; requestAnimationFrame(() => drawFullCanvas()); };
+            } else {
+                if(dot) dot.style.display = 'none';
+                row.onmouseenter = null; row.onmouseleave = null;
+            }
+        });
+    }
+
+    let pivotMode = 'auto', lockedPoint = null, globalBestVertex = null, globalBestZ = 0;
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const VIEW_MAX = 16, VIEW_MIN = -2; 
+    let isDraggingZ = false, currentZ = 0;
+    let cachedVertices = [], cachedLines = [], cachedIntPts = [];
+
+    function toScreen(x, y) { const span = VIEW_MAX - VIEW_MIN; return [(x - VIEW_MIN) * (canvas.width / span), canvas.height - (y - VIEW_MIN) * (canvas.height / span)]; }
+    function toMath(screenX, screenY) { const span = VIEW_MAX - VIEW_MIN; return { x: (screenX / (canvas.width / span)) + VIEW_MIN, y: VIEW_MIN + (canvas.height - screenY) / (canvas.height / span) }; }
+
+    canvas.addEventListener('mousedown', () => { if(N===2) isDraggingZ = true; });
+    document.addEventListener('mouseup', () => isDraggingZ = false);
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDraggingZ || N!==2) return;
+        const rect = canvas.getBoundingClientRect();
+        const mathPt = toMath((e.clientX - rect.left) * (canvas.width / rect.width), (e.clientY - rect.top) * (canvas.height / rect.height));
+        const c1 = parseFloat(document.getElementById('c1').value) || 0;
+        const c2 = parseFloat(document.getElementById('c2').value) || 0;
+        currentZ = c1 * mathPt.x + c2 * mathPt.y;
+        if(document.getElementById('c-mode-toggle').checked) { document.getElementById('pivot-mode').value = 'auto'; pivotMode = 'auto'; lockedPoint = null; }
+        document.getElementById('z-val-display').innerText = currentZ.toFixed(2);
+        requestAnimationFrame(() => drawFullCanvas());
+    });
+
+    function toggleCMode() {
+        const isCMode = document.getElementById('c-mode-toggle').checked;
+        const panel = document.getElementById('c-mode-controls');
+        document.getElementById('c1').readOnly = isCMode; document.getElementById('c2').readOnly = isCMode;
+        panel.style.display = isCMode ? 'block' : 'none';
+        if(isCMode) { slideC(); handlePivotChange(); } else { pivotMode = 'auto'; lockedPoint = null; solveAndDraw(); }
+    }
+    function handlePivotChange() {
+        pivotMode = document.getElementById('pivot-mode').value;
+        const c1 = parseFloat(document.getElementById('c1').value)||0, c2 = parseFloat(document.getElementById('c2').value)||0;
+        if (pivotMode === 'vertex' && globalBestVertex) lockedPoint = { x: globalBestVertex.x, y: globalBestVertex.y };
+        else if (pivotMode === 'y-axis') lockedPoint = { x: 0, y: Math.abs(c2) > 1e-4 ? globalBestZ / c2 : 0 };
+        else lockedPoint = null;
+        
+        // 当用户手动切换锚点模式时，隐藏吸附按钮
+        document.getElementById('snap-optimal-btn').classList.remove('active');
+        solveAndDraw();
+    }
+    function slideC() {
+        const cVal = parseFloat(document.getElementById('c-slider').value);
+        document.getElementById('c-val-text').innerText = cVal.toFixed(2);
+        if(document.getElementById('c-mode-target').value === '1') { document.getElementById('c1').value = cVal; } 
+        else { document.getElementById('c2').value = cVal; }
+        solveAndDraw();
+    }
+
+    // --- 新增：一键吸附至新最优点 ---
+    function snapToOptimal() {
+        if (globalBestVertex) {
+            lockedPoint = { x: globalBestVertex.x, y: globalBestVertex.y };
+            document.getElementById('pivot-mode').value = 'vertex';
+            pivotMode = 'vertex';
+            // 隐藏闪烁按钮
+            document.getElementById('snap-optimal-btn').classList.remove('active');
+            solveAndDraw();
+        }
+    }
+
+    function generateStandardFormText(type, objCoeffs, constraints, bounds) {
+        let text = (type === 'min' ? "Max Z' = " : "Max Z = ");
+        let objTerms = [];
+        for(let i=1; i<=N; i++) {
+            let c = type === 'min' ? -objCoeffs[i-1] : objCoeffs[i-1];
+            if (c === 0) continue;
+            let sign = c > 0 ? '+' : '-'; let absC = Math.abs(c); let bnd = bounds[i-1];
+            if (bnd === '>=0') objTerms.push(`${sign} ${absC}x${i}`);
+            else if (bnd === '<=0') objTerms.push(`${c>0?'-':'+'} ${absC}x${i}'`);
+            else if (bnd === 'free') objTerms.push(`${sign} ${absC}x${i}' ${c>0?'-':'+'} ${absC}x${i}''`);
+        }
+        text += objTerms.length > 0 ? objTerms.join(" ").replace(/^\+ /, '') : "0";
+        text += "\nS.t.\n";
+        
+        let varCount = N;
+        constraints.forEach(c => {
+            let rhs = c.c, sign = c.sign, coeffs = [...c.coeffs];
+            if (rhs < 0) { rhs = -rhs; coeffs = coeffs.map(v => -v); sign = (sign === '<=') ? '>=' : (sign === '>=' ? '<=' : '='); }
+            let eqTerms = [];
+            for(let i=1; i<=N; i++) {
+                let coeff = coeffs[i-1]; if (coeff === 0) continue;
+                let op = coeff > 0 ? '+' : '-'; let absC = Math.abs(coeff); let bnd = bounds[i-1];
+                if (bnd === '>=0') eqTerms.push(`${op} ${absC}x${i}`);
+                else if (bnd === '<=0') eqTerms.push(`${coeff>0?'-':'+'} ${absC}x${i}'`);
+                else if (bnd === 'free') eqTerms.push(`${op} ${absC}x${i}' ${coeff>0?'-':'+'} ${absC}x${i}''`);
+            }
+            let lhs = eqTerms.length > 0 ? eqTerms.join(" ").replace(/^\+ /, '') : "0";
+            if (sign === '<=') { varCount++; text += `  ${lhs} + x${varCount} = ${rhs}\n`; } 
+            else if (sign === '>=') { varCount++; text += `  ${lhs} - x${varCount} = ${rhs}\n`; } 
+            else { text += `  ${lhs} = ${rhs}\n`; }
+        });
+        text += `\n  要求: 所有带标记的 x 变量均 ≥ 0`;
+        document.getElementById('standard-form').innerText = text;
+    }
+
+    function calculateSensitivityRange(targetV, type, fixedC1, fixedC2, varIndex) {
+        let minC = -Infinity, maxC = Infinity;
+        for(let v of cachedVertices) {
+            if(Math.abs(v.x - targetV.x) < 1e-4 && Math.abs(v.y - targetV.y) < 1e-4) continue;
+            let dx = targetV.x - v.x;
+            let dy = targetV.y - v.y;
+            
+            if (varIndex === 1) { 
+                let rhs = -fixedC2 * dy;
+                if (Math.abs(dx) > 1e-5) {
+                    let limit = rhs / dx;
+                    if (type === 'max') {
+                        if (dx > 0) minC = Math.max(minC, limit); else maxC = Math.min(maxC, limit);
+                    } else {
+                        if (dx > 0) maxC = Math.min(maxC, limit); else minC = Math.max(minC, limit);
+                    }
+                } else {
+                    let valid = type === 'max' ? (0 >= rhs) : (0 <= rhs);
+                    if(!valid) { minC = Infinity; maxC = -Infinity; break; }
+                }
+            } else {
+                let rhs = -fixedC1 * dx;
+                if (Math.abs(dy) > 1e-5) {
+                    let limit = rhs / dy;
+                    if (type === 'max') {
+                        if (dy > 0) minC = Math.max(minC, limit); else maxC = Math.min(maxC, limit);
+                    } else {
+                        if (dy > 0) maxC = Math.min(maxC, limit); else minC = Math.max(minC, limit);
+                    }
+                } else {
+                    let valid = type === 'max' ? (0 >= rhs) : (0 <= rhs);
+                    if(!valid) { minC = Infinity; maxC = -Infinity; break; }
+                }
+            }
+        }
+        
+        if (minC > maxC) return "无解 (不可能最优)";
+        let minStr = minC === -Infinity ? "-∞" : minC.toFixed(2);
+        let maxStr = maxC === Infinity ? "+∞" : maxC.toFixed(2);
+        if (minC === maxC) return `c = ${minC.toFixed(2)}`;
+        return `[ ${minStr},  ${maxStr} ]`;
+    }
+
+    function solveAndDraw() {
+        bindInteractions(); 
+        
+        let bounds = [];
+        for(let i=1; i<=N; i++) bounds.push(document.getElementById(`bound-x${i}`).value);
+        
+        const constraintsList = Array.from(document.querySelectorAll('.constraint'));
+        let parsedConstraints = constraintsList.map(c => {
+            let coeffs = [];
+            let coeffInputs = c.querySelectorAll('.a-coeff');
+            for(let i=0; i<N; i++) coeffs.push(parseFloat(coeffInputs[i].value)||0);
+            return { coeffs: coeffs, sign: c.querySelector('.sign').value, c: parseFloat(c.querySelector('.b').value)||0 };
+        });
+        
+        let objCoeffs = [];
+        for(let i=1; i<=N; i++) objCoeffs.push(parseFloat(document.getElementById(`c${i}`).value)||0);
+        const type = document.getElementById('obj-type').value;
+        const c1 = objCoeffs[0], c2 = objCoeffs[1];
+
+        generateStandardFormText(type, objCoeffs, parsedConstraints, bounds);
+
+        const panel = document.getElementById('status-panel');
+        const badge = document.getElementById('solution-type-badge');
+        const table = document.getElementById('analysis-table');
+        const tbody = document.getElementById('analysis-tbody');
+
+        if (N !== 2) {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            panel.className = 'status status-warn'; panel.innerHTML = `⚙️ 高维降维保护：结构已锁定，代数引擎全速运行中...`;
+            badge.innerHTML = "判定：高维代数推导中"; badge.style.background = "#34495e";
+            document.getElementById('table-title').style.display = 'none'; table.style.display = 'none';
+            return;
+        }
+
+        const isIP = document.getElementById('ip-toggle').checked;
+        const bndX1 = bounds[0], bndX2 = bounds[1];
+        
+        cachedLines = parsedConstraints.map(c => ({ a: c.coeffs[0], b: c.coeffs[1], sign: c.sign, c: c.c }));
+        const HUGE = 1000;
+        let drawLines = [...cachedLines];
+        drawLines.push({a: 1, b: 0, c: HUGE, sign: '<='}, {a: 0, b: 1, c: HUGE, sign: '<='}, {a: 1, b: 0, c: -HUGE, sign: '>='}, {a: 0, b: 1, c: -HUGE, sign: '>='});
+        if (bndX1 === '>=0') drawLines.push({a: 1, b: 0, c: 0, sign: '>='});
+        if (bndX1 === '<=0') drawLines.push({a: 1, b: 0, c: 0, sign: '<='});
+        if (bndX2 === '>=0') drawLines.push({a: 0, b: 1, c: 0, sign: '>='});
+        if (bndX2 === '<=0') drawLines.push({a: 0, b: 1, c: 0, sign: '<='});
+
+        cachedVertices = [];
+        for(let i=0; i<drawLines.length; i++) {
+            for(let j=i+1; j<drawLines.length; j++) {
+                let det = drawLines[i].a*drawLines[j].b - drawLines[j].a*drawLines[i].b;
+                if(Math.abs(det)>1e-6) {
+                    let x = (drawLines[i].c*drawLines[j].b - drawLines[j].c*drawLines[i].b)/det;
+                    let y = (drawLines[i].a*drawLines[j].c - drawLines[j].a*drawLines[i].c)/det;
+                    let feasible = drawLines.every(c => { 
+                        let val = c.a*x + c.b*y; 
+                        return c.sign==='<=' ? val<=c.c+0.01 : (c.sign==='>=' ? val>=c.c-0.01 : Math.abs(val-c.c)<0.01); 
+                    });
+                    if(feasible && !cachedVertices.some(v => Math.abs(v.x-x)<1e-4 && Math.abs(v.y-y)<1e-4)) cachedVertices.push({x,y});
+                }
+            }
+        }
+        
+        let bestContZ = type==='max' ? -Infinity : Infinity;
+        let optimalVertex = null;
+        if (cachedVertices.length > 0) {
+            cachedVertices.forEach(v => {
+                let z = c1*v.x + c2*v.y;
+                if(type==='max' && z>bestContZ) { bestContZ=z; optimalVertex = v; }
+                if(type==='min' && z<bestContZ) { bestContZ=z; optimalVertex = v; }
+            });
+        }
+
+        let optimalCount = 0;
+        if (cachedVertices.length > 0) {
+            cachedVertices.forEach(v => { let z = c1*v.x + c2*v.y; if(Math.abs(z - bestContZ) < 1e-4) optimalCount++; });
+        }
+
+        let isUnbounded = optimalVertex ? (Math.abs(optimalVertex.x) >= HUGE-10 || Math.abs(optimalVertex.y) >= HUGE-10) : false;
+        
+        if (cachedVertices.length === 0) { badge.innerHTML = "判定结论：无可行解"; badge.style.background = "#e74c3c"; } 
+        else if (isUnbounded) { badge.innerHTML = "判定结论：无界解"; badge.style.background = "#f39c12"; } 
+        else if (optimalCount > 1) { badge.innerHTML = "判定结论：无穷多最优解"; badge.style.background = "#9b59b6"; } 
+        else { badge.innerHTML = "判定结论：唯一最优解"; badge.style.background = "#27ae60"; }
+
+        if (cachedVertices.length > 0 && !isUnbounded) {
+            document.getElementById('table-title').style.display = 'block'; table.style.display = 'table'; tbody.innerHTML = '';
+            let validV = cachedVertices.filter(v => Math.abs(v.x) < HUGE-10 && Math.abs(v.y) < HUGE-10);
+            const cx = validV.reduce((s,p)=>s+p.x,0)/validV.length;
+            const cy = validV.reduce((s,p)=>s+p.y,0)/validV.length;
+            validV.sort((a,b)=> Math.atan2(a.y-cy,a.x-cx) - Math.atan2(b.y-cy,b.x-cx));
+            validV.forEach(v => {
+                let z = c1*v.x + c2*v.y;
+                let isOpt = Math.abs(z - bestContZ) < 1e-4;
+                let tr = document.createElement('tr');
+                if (isOpt) tr.className = 'optimal-row';
+                let rangeC1 = calculateSensitivityRange(v, type, c1, c2, 1);
+                let rangeC2 = calculateSensitivityRange(v, type, c1, c2, 2);
+                tr.innerHTML = `<td>(${v.x.toFixed(2)}, ${v.y.toFixed(2)}) ${isOpt ? '🏆' : ''}</td><td>${z.toFixed(2)}</td><td>${rangeC1}</td><td>${rangeC2}</td>`;
+                tbody.appendChild(tr);
+            });
+        } else {
+            document.getElementById('table-title').style.display = 'none'; table.style.display = 'none';
+        }
+
+        if (cachedVertices.length === 0) {
+            panel.className = 'status status-err'; panel.innerHTML = '❌ 约束冲突或可行域为空';
+            currentZ = 0; drawFullCanvas(); return;
+        }
+
+        cachedIntPts = [];
+        let bestIntZ = type==='max' ? -Infinity : Infinity;
+        let intOptimalPt = null;
+        if (isIP && !isUnbounded) {
+            let minX = Math.max(VIEW_MIN, Math.floor(Math.min(...cachedVertices.map(v=>v.x))));
+            let maxX = Math.min(VIEW_MAX, Math.ceil(Math.max(...cachedVertices.map(v=>v.x))));
+            let minY = Math.max(VIEW_MIN, Math.floor(Math.min(...cachedVertices.map(v=>v.y))));
+            let maxY = Math.min(VIEW_MAX, Math.ceil(Math.max(...cachedVertices.map(v=>v.y))));
+            for(let x=minX; x<=maxX; x++) {
+                for(let y=minY; y<=maxY; y++) {
+                    let feasible = drawLines.every(c => { 
+                        let val = c.a*x + c.b*y; 
+                        return c.sign==='<=' ? val<=c.c+1e-5 : (c.sign==='>=' ? val>=c.c-1e-5 : Math.abs(val-c.c)<1e-5); 
+                    });
+                    if(feasible) {
+                        cachedIntPts.push({x,y});
+                        let z = c1*x + c2*y;
+                        if(type==='max' && z > bestIntZ) { bestIntZ = z; intOptimalPt = {x,y}; }
+                        if(type==='min' && z < bestIntZ) { bestIntZ = z; intOptimalPt = {x,y}; }
+                    }
+                }
+            }
+        }
+
+        globalBestVertex = optimalVertex; 
+        globalBestZ = bestContZ;
+        let displayZ = bestContZ;
+        let isAnchorOptimal = true;
+
+        if (pivotMode === 'vertex' && lockedPoint) {
+            displayZ = c1 * lockedPoint.x + c2 * lockedPoint.y;
+            isAnchorOptimal = Math.abs(displayZ - bestContZ) < 1e-4;
+        } else if (pivotMode === 'y-axis' && lockedPoint) {
+            displayZ = c1 * lockedPoint.x + c2 * lockedPoint.y;
+            isAnchorOptimal = Math.abs(displayZ - bestContZ) < 1e-4;
+        } else if (isIP && intOptimalPt) {
+            displayZ = bestIntZ; 
+        }
+
+        if(cachedVertices.length > 2) {
+            const cx = cachedVertices.reduce((s,p)=>s+p.x,0)/cachedVertices.length;
+            const cy = cachedVertices.reduce((s,p)=>s+p.y,0)/cachedVertices.length;
+            cachedVertices.sort((a,b)=> Math.atan2(a.y-cy,a.x-cx) - Math.atan2(b.y-cy,b.x-cx));
+        }
+
+        // --- 核心：控制一键吸附按钮的显隐 ---
+        const snapBtn = document.getElementById('snap-optimal-btn');
+        if (pivotMode !== 'auto') {
+            if (isAnchorOptimal) { 
+                panel.className = 'status status-ok'; panel.innerHTML = `✅ 旋转锚点处于最优解 | Z = ${displayZ.toFixed(2)}`; 
+                snapBtn.classList.remove('active');
+            } 
+            else { 
+                panel.className = 'status status-warn'; panel.innerHTML = `⚠️ 越界！原锚点已失效 (存在更优解 Z=${bestContZ.toFixed(2)})`; 
+                snapBtn.classList.add('active'); // 闪烁显示！
+            }
+        } else {
+            snapBtn.classList.remove('active');
+            if (isUnbounded) { panel.className = 'status status-warn'; panel.innerHTML = `⚠️ 目标值方向发散`; }
+            else { panel.className = 'status status-ok'; panel.innerHTML = `🎯 捕获极值：(${optimalVertex.x.toFixed(2)}, ${optimalVertex.y.toFixed(2)}) | Z = ${bestContZ.toFixed(2)}`; }
+        }
+
+        currentZ = displayZ;
+        document.getElementById('z-val-display').innerText = currentZ.toFixed(2);
+        drawFullCanvas();
+    }
+
+    function drawFullCanvas() {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        
+        ctx.strokeStyle='#ecf0f1'; ctx.lineWidth=1;
+        for(let i=VIEW_MIN; i<=VIEW_MAX; i++) {
+            ctx.beginPath(); ctx.moveTo(...toScreen(i,VIEW_MIN)); ctx.lineTo(...toScreen(i,VIEW_MAX)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(...toScreen(VIEW_MIN,i)); ctx.lineTo(...toScreen(VIEW_MAX,i)); ctx.stroke();
+            if(i!==0) { ctx.fillStyle='#bdc3c7'; ctx.fillText(i, ...toScreen(i,-0.3)); ctx.fillText(i, ...toScreen(-0.3,i)); }
+        }
+        ctx.strokeStyle='#2c3e50'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(...toScreen(VIEW_MIN,0)); ctx.lineTo(...toScreen(VIEW_MAX,0)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...toScreen(0,VIEW_MIN)); ctx.lineTo(...toScreen(0,VIEW_MAX)); ctx.stroke();
+        
+        const validPolygon = cachedVertices.filter(v => Math.abs(v.x) < 500 && Math.abs(v.y) < 500);
+        if(validPolygon.length > 2) {
+            ctx.fillStyle='rgba(46,204,113,0.2)'; ctx.beginPath();
+            ctx.moveTo(...toScreen(validPolygon[0].x, validPolygon[0].y));
+            for(let i=1; i<validPolygon.length; i++) ctx.lineTo(...toScreen(validPolygon[i].x, validPolygon[i].y));
+            ctx.closePath(); ctx.fill();
+        } else if (validPolygon.length === 2) {
+            ctx.strokeStyle='rgba(46,204,113,0.8)'; ctx.lineWidth=4; ctx.beginPath();
+            ctx.moveTo(...toScreen(validPolygon[0].x, validPolygon[0].y)); ctx.lineTo(...toScreen(validPolygon[1].x, validPolygon[1].y)); ctx.stroke();
+        } else if (validPolygon.length === 1) {
+            ctx.fillStyle='rgba(46,204,113,0.8)'; ctx.beginPath(); ctx.arc(...toScreen(validPolygon[0].x, validPolygon[0].y), 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        if (lockedPoint && pivotMode !== 'auto' && document.getElementById('c-mode-toggle').checked) {
+            ctx.fillStyle = '#f1c40f'; ctx.strokeStyle = '#d35400'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(...toScreen(lockedPoint.x, lockedPoint.y), 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+
+        cachedLines.forEach((c, idx) => {
+            if (c.a === 0 && c.b === 0) return;
+            const isHovered = (hoveredLineIdx === idx);
+            ctx.strokeStyle = LINE_COLORS[idx % LINE_COLORS.length];
+            ctx.lineWidth = isHovered ? 5 : (hoveredLineIdx === -1 ? 2 : 1);
+            ctx.globalAlpha = isHovered ? 1.0 : (hoveredLineIdx === -1 ? 0.8 : 0.2);
+            ctx.beginPath();
+            if (Math.abs(c.b) > 1e-4) {
+                ctx.moveTo(...toScreen(VIEW_MIN, (c.c - c.a*VIEW_MIN)/c.b)); ctx.lineTo(...toScreen(VIEW_MAX, (c.c - c.a*VIEW_MAX)/c.b));
+            } else {
+                ctx.moveTo(...toScreen(c.c/c.a, VIEW_MIN)); ctx.lineTo(...toScreen(c.c/c.a, VIEW_MAX));
+            }
+            ctx.stroke(); ctx.globalAlpha = 1.0; 
+        });
+
+        const c1 = parseFloat(document.getElementById('c1').value)||0;
+        const c2 = parseFloat(document.getElementById('c2').value)||0;
+        if(c1!==0 || c2!==0) {
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.beginPath();
+            if(Math.abs(c2)>1e-4) {
+                ctx.moveTo(...toScreen(-15, (currentZ - c1*-15)/c2)); ctx.lineTo(...toScreen(20, (currentZ - c1*20)/c2));
+            } else {
+                ctx.moveTo(...toScreen(currentZ/c1, -15)); ctx.lineTo(...toScreen(currentZ/c1, 20));
+            }
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+    }
+
+    rebuildUI();
+</script>
+</body>
+</html>
