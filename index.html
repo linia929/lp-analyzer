@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>全能运筹优化分析台 (极值吸附版)</title>
+    <title>运筹优化全能分析台 (Operations Research Analyzer Pro)</title>
     <style>
         :root { --primary: #2980b9; --bg: #ecf0f1; --panel-bg: #ffffff; }
         body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); overflow: hidden; }
@@ -62,11 +62,11 @@
 
 <div class="sidebar" id="sidebar">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: #2c3e50; color: white; padding: 10px 15px; border-radius: 6px;">
-        <span style="font-weight: bold; font-size: 15px;">🌌 系统维度设置：</span>
-        <div>变量数 (N): <input type="number" id="var-count" value="2" min="1" max="10" onchange="rebuildUI()" style="width: 50px; font-weight: bold;"></div>
+        <span style="font-weight: bold; font-size: 14px; letter-spacing: 0.5px;">🚀 运筹优化全能分析台 <br> <span style="font-size: 11px; font-weight: normal; opacity: 0.8;">Operations Research Analyzer Pro</span></span>
+        <div>维度 (N): <input type="number" id="var-count" value="2" min="1" max="10" onchange="rebuildUI()" style="width: 45px; font-weight: bold;"></div>
     </div>
 
-    <h3>🤖 智能文本识别器 (全局扫除法)</h3>
+    <h3>🤖 智能文本识别器 (限二元 N=2)</h3>
     <div class="card">
         <textarea id="smart-input" placeholder="将 OCR 识别的文本直接粘贴在此处，无视乱码..."></textarea>
         <button class="btn-parse" onclick="parseText()">✨ 提取公式并自动求解最值</button>
@@ -305,6 +305,7 @@
         panel.style.display = isCMode ? 'block' : 'none';
         if(isCMode) { slideC(); handlePivotChange(); } else { pivotMode = 'auto'; lockedPoint = null; solveAndDraw(); }
     }
+    
     function handlePivotChange() {
         pivotMode = document.getElementById('pivot-mode').value;
         const c1 = parseFloat(document.getElementById('c1').value)||0, c2 = parseFloat(document.getElementById('c2').value)||0;
@@ -312,10 +313,10 @@
         else if (pivotMode === 'y-axis') lockedPoint = { x: 0, y: Math.abs(c2) > 1e-4 ? globalBestZ / c2 : 0 };
         else lockedPoint = null;
         
-        // 当用户手动切换锚点模式时，隐藏吸附按钮
         document.getElementById('snap-optimal-btn').classList.remove('active');
         solveAndDraw();
     }
+    
     function slideC() {
         const cVal = parseFloat(document.getElementById('c-slider').value);
         document.getElementById('c-val-text').innerText = cVal.toFixed(2);
@@ -324,13 +325,11 @@
         solveAndDraw();
     }
 
-    // --- 新增：一键吸附至新最优点 ---
     function snapToOptimal() {
         if (globalBestVertex) {
             lockedPoint = { x: globalBestVertex.x, y: globalBestVertex.y };
             document.getElementById('pivot-mode').value = 'vertex';
             pivotMode = 'vertex';
-            // 隐藏闪烁按钮
             document.getElementById('snap-optimal-btn').classList.remove('active');
             solveAndDraw();
         }
@@ -523,6 +522,7 @@
             currentZ = 0; drawFullCanvas(); return;
         }
 
+        // --- 核心修复：高亮的整数坐标渲染矩阵 ---
         cachedIntPts = [];
         let bestIntZ = type==='max' ? -Infinity : Infinity;
         let intOptimalPt = null;
@@ -535,7 +535,7 @@
                 for(let y=minY; y<=maxY; y++) {
                     let feasible = drawLines.every(c => { 
                         let val = c.a*x + c.b*y; 
-                        return c.sign==='<=' ? val<=c.c+1e-5 : (c.sign==='>=' ? val>=c.c-1e-5 : Math.abs(val-c.c)<1e-5); 
+                        return c.sign==='<=' ? val<=c.c+1e-4 : (c.sign==='>=' ? val>=c.c-1e-4 : Math.abs(val-c.c)<1e-4); 
                     });
                     if(feasible) {
                         cachedIntPts.push({x,y});
@@ -568,7 +568,6 @@
             cachedVertices.sort((a,b)=> Math.atan2(a.y-cy,a.x-cx) - Math.atan2(b.y-cy,b.x-cx));
         }
 
-        // --- 核心：控制一键吸附按钮的显隐 ---
         const snapBtn = document.getElementById('snap-optimal-btn');
         if (pivotMode !== 'auto') {
             if (isAnchorOptimal) { 
@@ -577,12 +576,18 @@
             } 
             else { 
                 panel.className = 'status status-warn'; panel.innerHTML = `⚠️ 越界！原锚点已失效 (存在更优解 Z=${bestContZ.toFixed(2)})`; 
-                snapBtn.classList.add('active'); // 闪烁显示！
+                snapBtn.classList.add('active'); 
             }
         } else {
             snapBtn.classList.remove('active');
-            if (isUnbounded) { panel.className = 'status status-warn'; panel.innerHTML = `⚠️ 目标值方向发散`; }
-            else { panel.className = 'status status-ok'; panel.innerHTML = `🎯 捕获极值：(${optimalVertex.x.toFixed(2)}, ${optimalVertex.y.toFixed(2)}) | Z = ${bestContZ.toFixed(2)}`; }
+            if (isIP) {
+                 if (isUnbounded) { panel.className = 'status status-warn'; panel.innerHTML = '⚠️ 区域无界，无法穷举整数解'; displayZ = 0; }
+                 else if (cachedIntPts.length === 0) { panel.className = 'status status-err'; panel.innerHTML = '❌ 可行域内无整数解'; displayZ = 0; } 
+                 else { panel.className = 'status status-ok'; panel.innerHTML = `🌟 捕获整数最优解：(${intOptimalPt.x}, ${intOptimalPt.y}) | Z = ${bestIntZ.toFixed(2)}`; }
+            } else {
+                 if (isUnbounded) { panel.className = 'status status-warn'; panel.innerHTML = `⚠️ 目标值方向发散`; }
+                 else { panel.className = 'status status-ok'; panel.innerHTML = `🎯 捕获极值：(${optimalVertex.x.toFixed(2)}, ${optimalVertex.y.toFixed(2)}) | Z = ${bestContZ.toFixed(2)}`; }
+            }
         }
 
         currentZ = displayZ;
@@ -614,6 +619,19 @@
             ctx.moveTo(...toScreen(validPolygon[0].x, validPolygon[0].y)); ctx.lineTo(...toScreen(validPolygon[1].x, validPolygon[1].y)); ctx.stroke();
         } else if (validPolygon.length === 1) {
             ctx.fillStyle='rgba(46,204,113,0.8)'; ctx.beginPath(); ctx.arc(...toScreen(validPolygon[0].x, validPolygon[0].y), 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        // --- 确保整数点被清晰绘制的高强逻辑 ---
+        if (document.getElementById('ip-toggle').checked && cachedIntPts.length > 0) {
+            ctx.fillStyle = '#9b59b6'; // 显眼的紫色
+            ctx.strokeStyle = '#ffffff'; // 白色描边防止融入背景
+            ctx.lineWidth = 1.5;
+            cachedIntPts.forEach(pt => { 
+                ctx.beginPath(); 
+                ctx.arc(...toScreen(pt.x, pt.y), 5, 0, Math.PI*2); // 更大的圆点
+                ctx.fill(); 
+                ctx.stroke();
+            });
         }
 
         if (lockedPoint && pivotMode !== 'auto' && document.getElementById('c-mode-toggle').checked) {
