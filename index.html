@@ -143,7 +143,7 @@
     </div>
     
     <div class="canvas-container" id="canvas-wrapper">
-        <canvas id="canvas" width="800" height="420"></canvas>
+        <canvas id="canvas"></canvas>
         <div style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.95); padding: 12px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none; border: 1px solid #ecf0f1;">
             💡 <strong>智能寻优雷达：</strong><br>更改参数自动锁定全局最优解。<br>
             <div style="margin-top: 5px; font-size: 15px;">当前 <span style="color: #e74c3c; font-weight: bold;">Z = <span id="z-val-display">0.00</span></span></div>
@@ -217,7 +217,7 @@
     let isResizing = false;
     resizer.addEventListener('mousedown', () => { isResizing = true; resizer.classList.add('active'); document.body.style.cursor = 'ew-resize'; });
     document.addEventListener('mousemove', (e) => { if (isResizing) sidebar.style.width = Math.max(300, Math.min(e.clientX, 800)) + 'px'; });
-    document.addEventListener('mouseup', () => { if (isResizing) { isResizing = false; resizer.classList.remove('active'); document.body.style.cursor = 'default'; }});
+    document.addEventListener('mouseup', () => { if (isResizing) { isResizing = false; resizer.classList.remove('active'); document.body.style.cursor = 'default'; solveAndDraw(); }});
 
     function parseText() {
         if(N !== 2) { document.getElementById('var-count').value = 2; rebuildUI(); }
@@ -277,12 +277,29 @@
     let pivotMode = 'auto', lockedPoint = null, globalBestVertex = null, globalBestZ = 0;
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const VIEW_MAX = 16, VIEW_MIN = -2; 
-    let isDraggingZ = false, currentZ = 0;
-    let cachedVertices = [], cachedLines = [], cachedIntPts = [];
+    
+    // --- 核心修复：建立动态的网格边界体系，保障 1:1 的完美长宽比 ---
+    function getBounds() {
+        // 固定 Y 轴的视野范围为 -2 到 16，跨度恒为 18 个数学单位
+        const minY = -2, maxY = 16, spanY = 18;
+        // 计算每个数学单位对应的物理像素数
+        const scale = canvas.height / spanY;
+        // 根据真实的物理宽度，反推出 X 轴需要展示多少数学单位，保持横纵比例绝对的 1:1
+        const spanX = canvas.width / scale;
+        const minX = -2;
+        const maxX = minX + spanX;
+        return { minX, maxX, minY, maxY, scale };
+    }
 
-    function toScreen(x, y) { const span = VIEW_MAX - VIEW_MIN; return [(x - VIEW_MIN) * (canvas.width / span), canvas.height - (y - VIEW_MIN) * (canvas.height / span)]; }
-    function toMath(screenX, screenY) { const span = VIEW_MAX - VIEW_MIN; return { x: (screenX / (canvas.width / span)) + VIEW_MIN, y: VIEW_MIN + (canvas.height - screenY) / (canvas.height / span) }; }
+    function toScreen(x, y) { 
+        const b = getBounds();
+        return [(x - b.minX) * b.scale, canvas.height - (y - b.minY) * b.scale]; 
+    }
+    
+    function toMath(screenX, screenY) { 
+        const b = getBounds();
+        return { x: (screenX / b.scale) + b.minX, y: b.minY + (canvas.height - screenY) / b.scale }; 
+    }
 
     canvas.addEventListener('mousedown', () => { if(N===2) isDraggingZ = true; });
     document.addEventListener('mouseup', () => isDraggingZ = false);
@@ -413,6 +430,8 @@
         return `[ ${minStr},  ${maxStr} ]`;
     }
 
+    let cachedVertices = [], cachedLines = [], cachedIntPts = [];
+
     function solveAndDraw() {
         bindInteractions(); 
         
@@ -440,6 +459,10 @@
         const tbody = document.getElementById('analysis-tbody');
 
         if (N !== 2) {
+            // 需要调用 resizeCanvas 清理，但不画网格
+            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+                canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+            }
             ctx.clearRect(0,0,canvas.width,canvas.height);
             panel.className = 'status status-warn'; panel.innerHTML = `⚙️ 高维降维保护：结构已锁定，代数引擎全速运行中...`;
             badge.innerHTML = "判定：高维代数推导中"; badge.style.background = "#34495e";
@@ -522,15 +545,22 @@
             currentZ = 0; drawFullCanvas(); return;
         }
 
-        // --- 核心修复：高亮的整数坐标渲染矩阵 ---
+        // 计算物理边界以限制 IP 扫描范围，提升性能
+        // 注意要在 resizeCanvas 执行后才能获取准确的 getBounds()
+        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+            canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+        }
+        const b = getBounds();
+        
         cachedIntPts = [];
         let bestIntZ = type==='max' ? -Infinity : Infinity;
         let intOptimalPt = null;
         if (isIP && !isUnbounded) {
-            let minX = Math.max(VIEW_MIN, Math.floor(Math.min(...cachedVertices.map(v=>v.x))));
-            let maxX = Math.min(VIEW_MAX, Math.ceil(Math.max(...cachedVertices.map(v=>v.x))));
-            let minY = Math.max(VIEW_MIN, Math.floor(Math.min(...cachedVertices.map(v=>v.y))));
-            let maxY = Math.min(VIEW_MAX, Math.ceil(Math.max(...cachedVertices.map(v=>v.y))));
+            let minX = Math.max(b.minX, Math.floor(Math.min(...cachedVertices.map(v=>v.x))));
+            let maxX = Math.min(b.maxX, Math.ceil(Math.max(...cachedVertices.map(v=>v.x))));
+            let minY = Math.max(b.minY, Math.floor(Math.min(...cachedVertices.map(v=>v.y))));
+            let maxY = Math.min(b.maxY, Math.ceil(Math.max(...cachedVertices.map(v=>v.y))));
+            
             for(let x=minX; x<=maxX; x++) {
                 for(let y=minY; y<=maxY; y++) {
                     let feasible = drawLines.every(c => { 
@@ -595,18 +625,34 @@
         drawFullCanvas();
     }
 
+    function resizeCanvas() {
+        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+    }
+
     function drawFullCanvas() {
+        resizeCanvas();
         ctx.clearRect(0,0,canvas.width,canvas.height);
+        const b = getBounds();
         
         ctx.strokeStyle='#ecf0f1'; ctx.lineWidth=1;
-        for(let i=VIEW_MIN; i<=VIEW_MAX; i++) {
-            ctx.beginPath(); ctx.moveTo(...toScreen(i,VIEW_MIN)); ctx.lineTo(...toScreen(i,VIEW_MAX)); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(...toScreen(VIEW_MIN,i)); ctx.lineTo(...toScreen(VIEW_MAX,i)); ctx.stroke();
-            if(i!==0) { ctx.fillStyle='#bdc3c7'; ctx.fillText(i, ...toScreen(i,-0.3)); ctx.fillText(i, ...toScreen(-0.3,i)); }
+        const startX = Math.floor(b.minX), endX = Math.ceil(b.maxX);
+        const startY = Math.floor(b.minY), endY = Math.ceil(b.maxY);
+        
+        for(let i=startX; i<=endX; i++) {
+            ctx.beginPath(); ctx.moveTo(...toScreen(i, b.minY)); ctx.lineTo(...toScreen(i, b.maxY)); ctx.stroke();
+            if(i!==0) { ctx.fillStyle='#bdc3c7'; ctx.fillText(i, ...toScreen(i, -0.3)); }
         }
+        for(let i=startY; i<=endY; i++) {
+            ctx.beginPath(); ctx.moveTo(...toScreen(b.minX, i)); ctx.lineTo(...toScreen(b.maxX, i)); ctx.stroke();
+            if(i!==0) { ctx.fillStyle='#bdc3c7'; ctx.fillText(i, ...toScreen(-0.3, i)); }
+        }
+        
         ctx.strokeStyle='#2c3e50'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(...toScreen(VIEW_MIN,0)); ctx.lineTo(...toScreen(VIEW_MAX,0)); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(...toScreen(0,VIEW_MIN)); ctx.lineTo(...toScreen(0,VIEW_MAX)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...toScreen(b.minX, 0)); ctx.lineTo(...toScreen(b.maxX, 0)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...toScreen(0, b.minY)); ctx.lineTo(...toScreen(0, b.maxY)); ctx.stroke();
         
         const validPolygon = cachedVertices.filter(v => Math.abs(v.x) < 500 && Math.abs(v.y) < 500);
         if(validPolygon.length > 2) {
@@ -621,14 +667,13 @@
             ctx.fillStyle='rgba(46,204,113,0.8)'; ctx.beginPath(); ctx.arc(...toScreen(validPolygon[0].x, validPolygon[0].y), 6, 0, Math.PI*2); ctx.fill();
         }
 
-        // --- 确保整数点被清晰绘制的高强逻辑 ---
         if (document.getElementById('ip-toggle').checked && cachedIntPts.length > 0) {
-            ctx.fillStyle = '#9b59b6'; // 显眼的紫色
-            ctx.strokeStyle = '#ffffff'; // 白色描边防止融入背景
+            ctx.fillStyle = '#9b59b6'; 
+            ctx.strokeStyle = '#ffffff'; 
             ctx.lineWidth = 1.5;
             cachedIntPts.forEach(pt => { 
                 ctx.beginPath(); 
-                ctx.arc(...toScreen(pt.x, pt.y), 5, 0, Math.PI*2); // 更大的圆点
+                ctx.arc(...toScreen(pt.x, pt.y), 5, 0, Math.PI*2); 
                 ctx.fill(); 
                 ctx.stroke();
             });
@@ -647,9 +692,9 @@
             ctx.globalAlpha = isHovered ? 1.0 : (hoveredLineIdx === -1 ? 0.8 : 0.2);
             ctx.beginPath();
             if (Math.abs(c.b) > 1e-4) {
-                ctx.moveTo(...toScreen(VIEW_MIN, (c.c - c.a*VIEW_MIN)/c.b)); ctx.lineTo(...toScreen(VIEW_MAX, (c.c - c.a*VIEW_MAX)/c.b));
+                ctx.moveTo(...toScreen(b.minX, (c.c - c.a*b.minX)/c.b)); ctx.lineTo(...toScreen(b.maxX, (c.c - c.a*b.maxX)/c.b));
             } else {
-                ctx.moveTo(...toScreen(c.c/c.a, VIEW_MIN)); ctx.lineTo(...toScreen(c.c/c.a, VIEW_MAX));
+                ctx.moveTo(...toScreen(c.c/c.a, b.minY)); ctx.lineTo(...toScreen(c.c/c.a, b.maxY));
             }
             ctx.stroke(); ctx.globalAlpha = 1.0; 
         });
@@ -659,14 +704,17 @@
         if(c1!==0 || c2!==0) {
             ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.beginPath();
             if(Math.abs(c2)>1e-4) {
-                ctx.moveTo(...toScreen(-15, (currentZ - c1*-15)/c2)); ctx.lineTo(...toScreen(20, (currentZ - c1*20)/c2));
+                ctx.moveTo(...toScreen(b.minX - 10, (currentZ - c1*(b.minX - 10))/c2)); 
+                ctx.lineTo(...toScreen(b.maxX + 10, (currentZ - c1*(b.maxX + 10))/c2));
             } else {
-                ctx.moveTo(...toScreen(currentZ/c1, -15)); ctx.lineTo(...toScreen(currentZ/c1, 20));
+                ctx.moveTo(...toScreen(currentZ/c1, b.minY - 10)); 
+                ctx.lineTo(...toScreen(currentZ/c1, b.maxY + 10));
             }
             ctx.stroke(); ctx.setLineDash([]);
         }
     }
 
+    window.addEventListener('resize', solveAndDraw);
     rebuildUI();
 </script>
 </body>
